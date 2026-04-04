@@ -65,3 +65,6 @@ branch = true
 show_missing = true
 skip_covered = false
 fail_under = 80
+
+[tool.pytest.ini_options]
+addopts = "--tb=short --cov --cov-branch --cov-report=xml --allow-no-tests"
