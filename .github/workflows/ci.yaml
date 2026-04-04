@@ -107,7 +107,11 @@ jobs:
     name: Version bump
     needs: [lint, security, test]
     # Only run on direct pushes to main — not on PRs targeting main
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Don't run unless ENABLE_VERSION_BUMP explicitly set - avoids bumping on template repo
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      vars.ENABLE_VERSION_BUMP == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write      # Needed to push the bumped commit and version tag
