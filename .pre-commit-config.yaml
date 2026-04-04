@@ -1,0 +1,89 @@
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+
+repos:
+  # ── General hygiene ────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace        # Strip trailing whitespace
+      - id: end-of-file-fixer          # Ensure files end with a newline
+      - id: mixed-line-ending          # Normalise line endings
+        args: [--fix=lf]
+      - id: check-merge-conflict       # Block accidental merge conflict markers
+      - id: check-case-conflict        # Catch case-insensitive filename clashes
+      - id: check-added-large-files    # Warn on large files being committed
+        args: [--maxkb=1000]
+      - id: check-yaml                 # Validate YAML syntax
+      - id: check-toml                 # Validate TOML syntax
+      - id: check-json                 # Validate JSON syntax
+      - id: pretty-format-json         # Auto-format JSON files
+        args: [--autofix, --indent=2]
+      - id: check-symlinks             # Detect broken symlinks
+      - id: destroyed-symlinks         # Detect symlinks changed to regular files
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key         # Block accidentally committed private keys
+      - id: debug-statements           # Block leftover debugger calls (pdb, etc.)
+      - id: check-ast                  # Ensure Python files parse as valid AST
+
+  # ── Secrets scanning ───────────────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks
+
+  # ── Python: Ruff (lint + format) ───────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+      - id: ruff                       # Lint and auto-fix
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format                # Code formatting (replaces Black)
+
+  # ── Python: type checking ──────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        additional_dependencies: []   # Add your stubs/typed deps here, e.g. types-requests
+
+  # ── Python: dependency security audit ─────────────────────────────────────
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.9.0
+    hooks:
+      - id: pip-audit
+
+  # ── Markdown ───────────────────────────────────────────────────────────────
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.44.0
+    hooks:
+      - id: markdownlint
+        args: [--fix]
+
+  # ── YAML advanced linting ──────────────────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.0
+    hooks:
+      - id: yamllint
+        args: [--strict]
+
+  # ── Commitizen: commit-msg format ──────────────────────────────────────────
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.4.1
+    hooks:
+      - id: commitizen                 # Enforce Conventional Commits on messages
+        stages: [commit-msg]
+      - id: commitizen-branch          # Enforce branch naming conventions
+        stages: [pre-push]
+        args:
+          - --allow-abort
+          # Allowed patterns:
+          #   main / master / develop / release-* / hotfix-*
+          #   feature/*, fix/*, chore/*, docs/*, refactor/*
+          - --branch-pattern
+          - >-
+            (main|master|develop|HEAD|release/.+|hotfix/.+|
+            (feature|fix|chore|docs|refactor|test|ci|perf)/[a-z0-9._-]+)
+          
