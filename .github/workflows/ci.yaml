@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+# Cancel any in-flight run for the same branch when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimal read-only default; jobs that need write access declare it explicitly
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint ────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Ruff — check
+        run: uv run ruff check . --output-format=github
+
+      - name: Ruff — format
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy .
+
+  # ── Security ─────────────────────────────────────────────────────────────────
+  security:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: pip-audit
+        run: uv run pip-audit
+
+  # ── Tests ────────────────────────────────────────────────────────────────────
+  test:
+    name: Test / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false   # Don't cancel sibling versions on first failure
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run pytest
+        run: uv run pytest --tb=short --cov --cov-branch --cov-report=xml
+
+      - name: Upload coverage report
+        # Only upload once — no point in duplicate reports from the matrix
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7
+
+  # ── Version bump (main only) ──────────────────────────────────────────────
+  bump:
+    name: Version bump
+    needs: [lint, security, test]
+    # Only run on direct pushes to main — not on PRs targeting main
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed to push the bumped commit and version tag
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Commitizen needs full history to determine bump type
+          # A PAT is required here if you want the pushed tag to trigger
+          # downstream workflows (e.g. a release pipeline), because events
+          # created by GITHUB_TOKEN don't trigger further workflow runs.
+          # Create a PAT and store it as a repo secret, then swap the line
+          # below to: token: ${{ secrets.RELEASE_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and update changelog
+        # --yes        skips the confirmation prompt
+        # exit code 21 means "nothing to bump" (no bumping commits since last tag);
+        # treat that as a success rather than a workflow failure
+        run: uv run cz bump --yes || [ $? -eq 21 ]
+
+      - name: Push commit and tag
+        run: git push --follow-tags
