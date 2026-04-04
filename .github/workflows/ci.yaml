@@ -110,16 +110,12 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Needed to push the bumped commit and version tag
+      contents: write      # Needed to push the bumped commit and version tag
+      pull-requests: write # Needed to open the PR
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Commitizen needs full history to determine bump type
-          # A PAT is required here if you want the pushed tag to trigger
-          # downstream workflows (e.g. a release pipeline), because events
-          # created by GITHUB_TOKEN don't trigger further workflow runs.
-          # Create a PAT and store it as a repo secret, then swap the line
-          # below to: token: ${{ secrets.RELEASE_PAT }}
+          fetch-depth: 0   # Commitizen needs full history to determine bump type
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install uv
@@ -138,11 +134,44 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump version and update changelog
-        # --yes        skips the confirmation prompt
-        # exit code 21 means "nothing to bump" (no bumping commits since last tag);
-        # treat that as a success rather than a workflow failure
-        run: uv run cz bump --yes || [ $? -eq 21 ]
+      - name: Run commitizen bump
+        id: cz
+        run: |
+          uv run cz bump --yes
+          EXIT=$?
+          if [ $EXIT -eq 21 ]; then
+            # No bump-worthy commits since the last tag — nothing to do
+            echo "bumped=false" >> $GITHUB_OUTPUT
+          elif [ $EXIT -ne 0 ]; then
+            exit $EXIT
+          else
+            echo "bumped=true" >> $GITHUB_OUTPUT
+            echo "version=$(uv run cz version --project)" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Push commit and tag
-        run: git push --follow-tags
+      - name: Push release branch and tag
+        if: steps.cz.outputs.bumped == 'true'
+        run: |
+          git checkout -b release/${{ steps.cz.outputs.version }}
+          # The bump commit goes to the release branch, not directly to main
+          git push origin release/${{ steps.cz.outputs.version }}
+          # Tags are not covered by branch protection — push separately
+          git push origin v${{ steps.cz.outputs.version }}
+
+      - name: Extract changelog entry for PR body
+        if: steps.cz.outputs.bumped == 'true'
+        run: |
+          VERSION="${{ steps.cz.outputs.version }}"
+          awk "/^## v?${VERSION}/{found=1; next} found && /^## /{exit} found{print}" \
+            CHANGELOG.md > .pr-body.md
+
+      - name: Open pull request
+        if: steps.cz.outputs.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "chore: release ${{ steps.cz.outputs.version }}" \
+            --body-file .pr-body.md \
+            --base main \
+            --head release/${{ steps.cz.outputs.version }}
