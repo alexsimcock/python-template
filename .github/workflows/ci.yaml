@@ -1,3 +1,5 @@
+# CI: pre-commit/security/test on every push+PR; auto-opens a release PR on main when ENABLE_VERSION_BUMP is set
+
 name: CI
 
 on:
@@ -9,6 +11,7 @@ on:
     branches:
       - main
       - develop
+  workflow_dispatch: {}
 
 # Cancel any in-flight run for the same branch when a new commit is pushed
 concurrency:
@@ -20,10 +23,11 @@ permissions:
   contents: read
 
 jobs:
-  # ── Lint ────────────────────────────────────────────────────────────────────
-  lint:
-    name: Lint
+  # ── Pre-commit ───────────────────────────────────────────────────────────────
+  pre_commit:
+    name: Pre-commit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -32,25 +36,14 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Install dependencies
-        run: uv sync --group dev
-
-      - name: Ruff — check
-        run: uv run ruff check . --output-format=github
-
-      - name: Ruff — format
-        run: uv run ruff format --check .
-
-      - name: Mypy
-        run: uv run mypy .
+      - name: Run pre-commit hooks
+        run: uvx prek run --all-files
 
   # ── Security ─────────────────────────────────────────────────────────────────
   security:
     name: Security audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -72,6 +65,7 @@ jobs:
   test:
     name: Test / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false   # Don't cancel sibling versions on first failure
       matrix:
@@ -105,7 +99,7 @@ jobs:
   # ── Version bump (main only) ──────────────────────────────────────────────
   bump:
     name: Version bump
-    needs: [lint, security, test]
+    needs: [pre_commit, security, test]
     # Only run on direct pushes to main — not on PRs targeting main
     # Don't run unless ENABLE_VERSION_BUMP explicitly set - avoids bumping on template repo
     if: |
@@ -113,69 +107,65 @@ jobs:
       github.event_name == 'push' &&
       vars.ENABLE_VERSION_BUMP == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
-      contents: write      # Needed to push the bumped commit and version tag
-      pull-requests: write # Needed to open the PR
+      contents: write # Needed to push the bumped commit and version tag
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Commitizen needs full history to determine bump type
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Install dependencies
-        run: uv sync --group dev
 
       - name: Configure git identity
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Run commitizen bump
-        id: cz
+      - name: Calculate and Apply Bump
+        id: psr
         run: |
-          uv run cz bump --yes
-          EXIT=$?
-          if [ $EXIT -eq 21 ]; then
-            # No bump-worthy commits since the last tag — nothing to do
-            echo "bumped=false" >> $GITHUB_OUTPUT
-          elif [ $EXIT -ne 0 ]; then
-            exit $EXIT
+          # Use uvx to run PSR without adding it to your dev dependencies
+          # --no-vcs-release prevents PSR from trying to push tags directly to main
+          # --no-push keeps changes local so we can branch them
+          # --no-commit/--no-tag: only stamp files, don't touch git history —
+          # the "Open Pull Request" step below owns commit/branch/push instead
+          uvx python-semantic-release version \
+            --no-commit --no-tag --no-vcs-release --no-push
+
+          if git diff --quiet; then
+            echo "No version bump needed"
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
           else
-            echo "bumped=true" >> $GITHUB_OUTPUT
-            echo "version=$(uv run cz version --project)" >> $GITHUB_OUTPUT
+            VERSION=$(uvx python-semantic-release version --print)
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Push release branch and tag
-        if: steps.cz.outputs.bumped == 'true'
-        run: |
-          git checkout -b release/${{ steps.cz.outputs.version }}
-          # The bump commit goes to the release branch, not directly to main
-          git push origin release/${{ steps.cz.outputs.version }}
-          # Tags are not covered by branch protection — push separately
-          git push origin v${{ steps.cz.outputs.version }}
-
-      - name: Extract changelog entry for PR body
-        if: steps.cz.outputs.bumped == 'true'
-        run: |
-          VERSION="${{ steps.cz.outputs.version }}"
-          awk "/^## v?${VERSION}/{found=1; next} found && /^## /{exit} found{print}" \
-            CHANGELOG.md > .pr-body.md
-
-      - name: Open pull request
-        if: steps.cz.outputs.bumped == 'true'
+      - name: Open Pull Request
+        if: steps.psr.outputs.bumped == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr create \
-            --title "chore: release ${{ steps.cz.outputs.version }}" \
-            --body-file .pr-body.md \
-            --base main \
-            --head release/${{ steps.cz.outputs.version }}
+          VERSION="${{ steps.psr.outputs.version }}"
+          BRANCH="release/${VERSION}"
+
+          git checkout -b "$BRANCH"
+          git add pyproject.toml CHANGELOG.md
+          git commit -m "chore: release $VERSION"
+          git push origin "$BRANCH" --force
+
+          # Check that job hasn't been re-run & PR for the head branch doesn't already exist
+          if gh pr list --head "$BRANCH" --json number --jq '.[0].number' | grep -q .; then
+            echo "PR for $BRANCH already exists, skipping create"
+          else
+            NOTES=$(awk '/^## /{c++} c==1' CHANGELOG.md)
+            gh pr create \
+              --title "chore: release $VERSION" \
+              --body "$NOTES" \
+              --base main \
+              --head "$BRANCH"
+          fi
