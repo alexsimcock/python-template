@@ -11,7 +11,7 @@ dev = [
     "commitizen>=4.13.9",
     "mypy>=1.20.0",
     "pip-audit>=2.10.0",
-    "pre-commit>=4.5.1",
+    "prek>=0.4.11",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.9",
@@ -27,14 +27,22 @@ packages = ["src/python_template"]
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
-version_scheme = "semver"
-version_provider = "pep621"
-update_changelog_on_bump = true
-changelog_incremental = true
 # Allowed branch naming patterns:
 #   main / master / develop / release-* / hotfix-*
 #   feature/*, fix/*, chore/*, docs/*, refactor/*
 branch_pattern = "(main|master|develop|HEAD|release/.+|hotfix/.+|(feature|fix|chore|docs|refactor|test|ci|perf)/[a-z0-9._-]+)"
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+build_command = "uv build"
+
+[tool.semantic_release.changelog]
+template_dir = "templates"
+exclude_commit_patterns = []
+
+[tool.semantic_release.branches.main]
+match = "main"
+prerelease = false
 
 [tool.ruff]
 target-version = "py312"
