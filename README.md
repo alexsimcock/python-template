@@ -65,5 +65,5 @@ To setup your environment run the following commands:
 uv sync
 
 # Install all pre-commit hooks
-uv run pre-commit install
+uv run prek install
 ```

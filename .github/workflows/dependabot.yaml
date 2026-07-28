@@ -1,0 +1,34 @@
+version: 2
+updates:
+  # Python dependencies via uv (pyproject.toml + uv.lock)
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      # batch routine bumps into one PR instead of one-per-package
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      # majors get their own PR — worth reviewing individually
+      major:
+        update-types:
+          - "major"
+    commit-message:
+      prefix: "chore"
+
+  # Keep pinned Action versions current too (actions/checkout@v4, etc.)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
