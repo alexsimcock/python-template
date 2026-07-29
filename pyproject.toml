@@ -36,10 +36,10 @@ packages = ["src/python_template"]
 [tool.commitizen]
 name = "cz_conventional_commits"
 tag_format = "v$version"
-# Allowed branch naming patterns:
-#   main / master / develop / release-* / hotfix-*
-#   feature/*, fix/*, chore/*, docs/*, refactor/*
-branch_pattern = "(main|master|develop|HEAD|release/.+|hotfix/.+|(feature|fix|chore|docs|refactor|test|ci|perf)/[a-z0-9._-]+)"
+# Allowed branch naming patterns (Trunk-Based Workflow targeting `main`):
+#   main
+#   feat/*, feature/*, fix/*, chore/*, docs/*, refactor/*, test/*, ci/*, perf/*
+branch_pattern = "(main|HEAD|(feat|feature|fix|chore|docs|refactor|test|ci|perf)/[a-z0-9._-]+)"
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]

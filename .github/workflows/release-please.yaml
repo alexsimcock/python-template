@@ -13,7 +13,6 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Run release-please to manage the Release PR and create releases
       - uses: googleapis/release-please-action@v4
         id: release
         with:

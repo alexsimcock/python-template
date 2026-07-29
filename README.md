@@ -6,9 +6,11 @@
 
 After creating a new repository from this template, complete the following steps before writing any code.
 
-**1. Rename the project in `pyproject.toml`**
+**1. Configure project metadata and package name**
 
-Replace every reference to `python-template` with your actual project name. Note that the importable package directory must use underscores where your project name uses hyphens:
+Update `pyproject.toml` with your project details, replacing all `python-template` placeholder references with your actual project name.
+
+*Note: While project names typically use hyphens (e.g., `my-project`), Python import directories inside `src/` must use underscores (e.g., `my_project`):*
 
 ```toml
 [project]
@@ -24,30 +26,33 @@ Rename the source directory to match:
 mv src/python_template src/your_project_name
 ```
 
-**2. Enable version bumping**
+**2. Configure GitHub Pull Request & Merge settings**
 
-Version bumping is disabled in the template repo by default. To enable it for your new repository, go to:
+Go to **Settings → General → Pull Requests**:
+- [x] **Allow squash merging**
+    - Set default message to: **Pull request title** (or *Pull request title and description*)
+- [x] **Allow auto-merge** (Required for Dependabot automated dependency updates)
 
-*Settings → Secrets and variables → Actions → Variables → New repository variable*
+**3. Configure Workflow Permissions**
 
-Add a variable named `ENABLE_VERSION_BUMP` with the value `true`.
+Go to **Settings → Actions → General → Workflow** permissions:
 
-**3. Set branch protection (optional but recommended)**
+- Select **Read and write permissions** (*Required for `release-please` and Dependabot actions*)
+- [x] **Allow GitHub Actions to create and approve pull requests**
 
-If your repository is public, go to *Settings → Rules → Rulesets* and create a branch ruleset targeting `main` with the following rules enabled:
+**4. Set branch protection (optional but recommended)**
+
+If your repository is public, go to **Settings → Rules → Rulesets** and create a branch ruleset targeting `main` with the following rules:
 
 - Restrict deletions
-- Require a pull request before merging (0 required approvals)
 - Block force pushes
-- Require status checks to pass — add `Lint`, `Security audit`, `Test / Python 3.12`, and `Test / Python 3.13`
-
-**4. Allow GitHub Actions to create pull requests**
-
-By default GitHub prevents Actions from opening pull requests. This is required for the automated version bump PR to work. Go to:
-
-*Settings → Actions → General → Workflow permissions*
-
-Enable **Allow GitHub Actions to create and approve pull requests**.
+- Require a pull request before merging (0 required approvals)
+- Require status checks to pass — add:
+    - `Lint`
+    - `Security audit`
+    - `Validate PR Title`
+    - `Test / Python 3.12`
+    - `Test / Python 3.13`
 
 **5. Replace the placeholder test**
 
