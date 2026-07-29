@@ -1,5 +1,3 @@
-# CI: pre-commit/security/test on every push+PR
-
 name: CI
 
 on:
