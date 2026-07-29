@@ -11,22 +11,27 @@ permissions:
   contents: write
 
 jobs:
-  automation:
-    name: Auto-Approve & Auto-Merge
+  dependabot:
+    name: Auto-Approve and Merge
     runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
     steps:
-      - name: Fetch Dependabot Metadata
+      - name: Dependabot Metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Approve and Enable Auto-Merge for Non-Major Bumps
+      - name: Auto-approve non-major updates
         if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: |
-          gh pr approve "$PR_URL"
-          gh pr merge --auto --squash "$PR_URL"
+        run: gh pr review "$PR_URL" --approve
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for non-major updates
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge "$PR_URL" --auto --squash
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
