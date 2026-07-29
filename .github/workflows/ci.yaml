@@ -1,4 +1,4 @@
-# CI: pre-commit/security/test on every push+PR; auto-opens a release PR on main when ENABLE_VERSION_BUMP is set
+# CI: pre-commit/security/test on every push+PR
 
 name: CI
 
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
-      fail-fast: false   # Don't cancel sibling versions on first failure
+      fail-fast: false # Don't cancel sibling versions on first failure
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
@@ -95,77 +95,3 @@ jobs:
           name: coverage-report
           path: coverage.xml
           retention-days: 7
-
-  # ── Version bump (main only) ──────────────────────────────────────────────
-  bump:
-    name: Version bump
-    needs: [pre_commit, security, test]
-    # Only run on direct pushes to main — not on PRs targeting main
-    # Don't run unless ENABLE_VERSION_BUMP explicitly set - avoids bumping on template repo
-    if: |
-      github.ref == 'refs/heads/main' &&
-      github.event_name == 'push' &&
-      vars.ENABLE_VERSION_BUMP == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write # Needed to push the bumped commit and version tag
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Calculate and Apply Bump
-        id: psr
-        run: |
-          # Use uvx to run PSR without adding it to your dev dependencies
-          # --no-vcs-release prevents PSR from trying to push tags directly to main
-          # --no-push keeps changes local so we can branch them
-          # --no-commit/--no-tag: only stamp files, don't touch git history —
-          # the "Open Pull Request" step below owns commit/branch/push instead
-          uvx python-semantic-release version \
-            --no-commit --no-tag --no-vcs-release --no-push
-
-          if git diff --quiet; then
-            echo "No version bump needed"
-            echo "bumped=false" >> "$GITHUB_OUTPUT"
-          else
-            VERSION=$(uvx python-semantic-release version --print)
-            echo "bumped=true" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Open Pull Request
-        if: steps.psr.outputs.bumped == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.psr.outputs.version }}"
-          BRANCH="release/${VERSION}"
-
-          git checkout -b "$BRANCH"
-          git add pyproject.toml CHANGELOG.md
-          git commit -m "chore: release $VERSION"
-          git push origin "$BRANCH" --force
-
-          # Check that job hasn't been re-run & PR for the head branch doesn't already exist
-          if gh pr list --head "$BRANCH" --json number --jq '.[0].number' | grep -q .; then
-            echo "PR for $BRANCH already exists, skipping create"
-          else
-            NOTES=$(awk '/^## /{c++} c==1' CHANGELOG.md)
-            gh pr create \
-              --title "chore: release $VERSION" \
-              --body "$NOTES" \
-              --base main \
-              --head "$BRANCH"
-          fi
