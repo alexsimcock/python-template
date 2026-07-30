@@ -48,7 +48,7 @@ If your repository is public, go to **Settings → Rules → Rulesets** and crea
 - Block force pushes
 - Require a pull request before merging (0 required approvals)
 - Require status checks to pass — add:
-    - `Lint`
+    - `Pre-commit`
     - `Security audit`
     - `Validate PR Title`
     - `Test / Python 3.12`
